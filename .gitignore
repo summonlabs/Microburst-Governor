@@ -1,0 +1,30 @@
+# Build trees
+/build/
+/build-*/
+/out/
+cmake-build-*/
+/_install/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.vcxproj*
+*.sln
+*.suo
+*.user
+
+# Local scratch
+/scratch/
+*.log
+*.tmp
+*.dmp
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.obj
+*.exe
+
+# Package manager
+vcpkg_installed/
