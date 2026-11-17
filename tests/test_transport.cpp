@@ -226,3 +226,11 @@ MBG_TEST(transport, evidence_reaches_the_governor_and_a_disconnect_fences) {
   MBG_CHECK(governor.stats().episodes_opened >= 1);
   static_cast<void>(teardown);
 }
+
+MBG_TEST(transport, a_second_listener_cannot_take_a_listening_port) {
+  transport::Listener first;
+  MBG_REQUIRE(first.bind_loopback(0).ok());
+  transport::Listener second;
+  // Two coordinators must never share one listening port: the second bind fails.
+  MBG_CHECK(!second.bind_loopback(first.port()).ok());
+}

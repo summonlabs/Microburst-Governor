@@ -2,10 +2,12 @@
 // Copyright 2026 Summon Software Labs.
 // SPDX-License-Identifier: Apache-2.0
 
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "mbg/governor.hpp"
@@ -320,4 +322,46 @@ MBG_TEST(persistence, journal_only_recovery_reconstructs_history) {
   MBG_CHECK(report.history_items >= 1);
   MBG_CHECK(governor.live_interventions().empty());
   MBG_CHECK(!governor.event_history().empty());
+}
+
+MBG_TEST(persistence, snapshot_replacement_waits_for_a_reader_to_close) {
+  const test::TempDir directory("snapshot-reader");
+  persist::DurableStore store;
+  persist::DurableStore::Config config;
+  config.directory = directory.path();
+  MBG_REQUIRE(store.open(config).ok());
+  std::vector<std::byte> first;
+  ByteWriter first_writer(first);
+  first_writer.u64(1);
+  MBG_REQUIRE(store.write_snapshot(first, RecordSeq::from_raw(1), Tick::from_raw(1)).ok());
+
+  std::vector<std::byte> second;
+  ByteWriter second_writer(second);
+  second_writer.u64(2);
+  bool reader_opened = false;
+  bool written = false;
+  {
+    // Another tool reading the store (an inspection, a scan) holds the snapshot
+    // open while it is replaced, and closes it shortly after.
+    std::ifstream reader(std::filesystem::path(directory.path()) / config.snapshot_name,
+                         std::ios::binary);
+    reader_opened = reader.is_open();
+    std::thread writer([&store, &second, &written] {
+      written = store.write_snapshot(second, RecordSeq::from_raw(2), Tick::from_raw(2)).ok();
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    reader.close();
+    writer.join();
+  }
+  MBG_CHECK(reader_opened);
+  // The snapshot is not lost because a reader had the file open for a moment.
+  MBG_CHECK(written);
+  persist::RecoveryReport report;
+  std::vector<std::byte> loaded;
+  MBG_REQUIRE(store
+                  .replay([](const persist::JournaledRecord&) -> Status { return Status{}; },
+                          report, loaded)
+                  .ok());
+  MBG_CHECK(report.snapshot_present);
+  MBG_CHECK_EQ(report.snapshot_covered_seq, 2U);
 }

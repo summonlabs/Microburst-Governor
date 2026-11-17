@@ -196,8 +196,15 @@ Status Listener::bind_loopback(std::uint16_t port, std::size_t backlog) {
     return Status::failure(StatusCode::kIo, "listener socket could not be created");
   }
   const int reuse = 1;
+#if defined(_WIN32)
+  // SO_REUSEADDR on Windows lets a second socket bind a port that is still
+  // listening; exclusive use makes that second bind fail instead.
+  ::setsockopt(handle, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&reuse),
+               sizeof(reuse));
+#else
   ::setsockopt(handle, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&reuse),
                sizeof(reuse));
+#endif
   sockaddr_in address{};
   address.sin_family = AF_INET;
   address.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
